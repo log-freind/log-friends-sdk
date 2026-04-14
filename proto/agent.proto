@@ -1,0 +1,108 @@
+syntax = "proto3";
+
+package logfriends;
+
+option java_multiple_files = true;
+option java_package = "com.logfriends.agent.proto";
+option java_outer_classname = "LogFriendsProto";
+option go_package = "github.com/log-friends/agent/collector/proto";
+
+message LogEvent {
+  string timestamp   = 1;
+  string level       = 2;
+  string logger_name = 3;
+  string thread_name = 4;
+  string message     = 5;
+  string trace_id    = 6;
+  string span_id     = 7;
+  string exception   = 8;
+  map<string, string> mdc = 9;
+}
+
+message HttpEvent {
+  string timestamp   = 1;
+  string method      = 2;
+  string uri         = 3;
+  int32  status_code = 4;
+  int64  duration_ms = 5;
+  string trace_id    = 6;
+  map<string, string> headers = 7;
+}
+
+// 모든 Kafka 메시지의 최상위 래퍼
+message AgentMessage {
+  string worker_id = 1;
+
+  oneof payload {
+    HandshakePayload handshake = 2;
+    BatchPayload     batch     = 3;
+  }
+}
+
+// 워커 최초 등록 (기동 5초 후 1회 전송)
+message HandshakePayload {
+  string           worker_name = 1;
+  repeated SpecDef specs       = 2;
+  int32            http_port   = 3;
+}
+
+// 로그 스펙 정의 (LogSpec.define() 빌더 결과)
+message SpecDef {
+  string            name        = 1;
+  string            description = 2;
+  repeated string   levels      = 3;
+  string            category    = 4;
+  repeated FieldDef fields      = 5;
+}
+
+// 로그 필드 정의
+message FieldDef {
+  string name        = 1;
+  string type        = 2;
+  bool   required    = 3;
+  string example     = 4;
+  string description = 5;
+}
+
+// 로그 배치 전송 (100건 or 500ms마다 플러시)
+message BatchPayload {
+  repeated AgentEvent events = 1;
+}
+
+// JDBC 쿼리 캡처
+message JdbcEvent {
+  string timestamp   = 1;
+  string sql         = 2;
+  int64  duration_ms = 3;
+  int32  row_count   = 4;
+  string trace_id    = 5;
+  string exception   = 6;
+}
+
+// @Service 메서드 실행 시간 (10ms 이상만)
+message MethodTraceEvent {
+  string timestamp   = 1;
+  string class_name  = 2;
+  string method_name = 3;
+  int64  duration_ms = 4;
+  string trace_id    = 5;
+  string exception   = 6;
+}
+
+// 배치 내 단일 이벤트
+message AgentEvent {
+  oneof event {
+    LogEvent          log          = 1;
+    HttpEvent         http         = 2;
+    LogEventCapture   log_event    = 3;
+    JdbcEvent         jdbc         = 4;
+    MethodTraceEvent  method_trace = 5;
+  }
+}
+
+// @LogEvent 메서드 인자 자동 캡처 결과
+message LogEventCapture {
+  string              timestamp  = 1;
+  string              event_name = 2;
+  map<string, string> fields     = 3;
+}
