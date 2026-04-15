@@ -17,6 +17,9 @@ class LogFriendsInstaller : EnvironmentPostProcessor {
         environment: ConfigurableEnvironment,
         application: SpringApplication
     ) {
+        val enabled = environment.getProperty("logfriends.agent.enabled", "true")
+        if (enabled.equals("false", ignoreCase = true)) return
+
         try {
             val inst = ByteBuddyAgent.install()
             InstrumentationRegistry.installAll(inst)
