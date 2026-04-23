@@ -19,11 +19,13 @@ object MethodTraceInterceptor {
     ): Any? {
         val start = System.currentTimeMillis()
         var exception: String? = null
+        var exceptionStack: String? = null
 
         return try {
             callable.call()
         } catch (e: Exception) {
             exception = e.message
+            exceptionStack = e.stackTraceToString()
             throw e
         } finally {
             val duration = System.currentTimeMillis() - start
@@ -33,7 +35,8 @@ object MethodTraceInterceptor {
                     method.name,
                     duration,
                     null,
-                    exception
+                    exception,
+                    exceptionStack
                 )
             }
         }

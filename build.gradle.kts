@@ -5,7 +5,7 @@ plugins {
 }
 
 group   = "com.logfriends"
-version = "1.0.0"
+version = "1.1.0"
 
 repositories {
     mavenCentral()
@@ -17,9 +17,6 @@ dependencies {
     // ByteBuddy - 바이트코드 계측
     implementation("net.bytebuddy:byte-buddy:1.15.11")
     implementation("net.bytebuddy:byte-buddy-agent:1.15.11")
-
-    // Kafka - 이벤트 전송
-    implementation("org.apache.kafka:kafka-clients:3.9.0")
 
     // Protobuf - 직렬화
     implementation("com.google.protobuf:protobuf-java:3.25.3")

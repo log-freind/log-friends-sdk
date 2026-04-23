@@ -27,6 +27,8 @@ message HttpEvent {
   int64  duration_ms = 5;
   string trace_id    = 6;
   map<string, string> headers = 7;
+  string exception_stack = 8;
+  map<string, string> request_headers = 9;
 }
 
 // 모든 Kafka 메시지의 최상위 래퍼
@@ -71,22 +73,24 @@ message BatchPayload {
 
 // JDBC 쿼리 캡처
 message JdbcEvent {
-  string timestamp   = 1;
-  string sql         = 2;
-  int64  duration_ms = 3;
-  int32  row_count   = 4;
-  string trace_id    = 5;
-  string exception   = 6;
+  string timestamp       = 1;
+  string sql             = 2;
+  int64  duration_ms     = 3;
+  int32  row_count       = 4;
+  string trace_id        = 5;
+  string exception       = 6;
+  string exception_stack = 7;
 }
 
 // @Service 메서드 실행 시간 (10ms 이상만)
 message MethodTraceEvent {
-  string timestamp   = 1;
-  string class_name  = 2;
-  string method_name = 3;
-  int64  duration_ms = 4;
-  string trace_id    = 5;
-  string exception   = 6;
+  string timestamp       = 1;
+  string class_name      = 2;
+  string method_name     = 3;
+  int64  duration_ms     = 4;
+  string trace_id        = 5;
+  string exception       = 6;
+  string exception_stack = 7;
 }
 
 // 배치 내 단일 이벤트

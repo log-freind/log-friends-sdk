@@ -1,27 +1,28 @@
 package com.logfriends.agent
 
 import com.logfriends.agent.proto.AgentEvent
-import com.logfriends.agent.proto.AgentMessage
-import com.logfriends.agent.proto.BatchPayload
 import com.logfriends.agent.proto.HttpEvent
 import com.logfriends.agent.proto.LogEvent
 import com.logfriends.agent.proto.LogEventCapture
-import org.apache.kafka.clients.producer.KafkaProducer
-import org.apache.kafka.clients.producer.ProducerConfig
-import org.apache.kafka.clients.producer.ProducerRecord
-import org.apache.kafka.common.serialization.ByteArraySerializer
-import org.apache.kafka.common.serialization.StringSerializer
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.time.Duration
 import java.time.Instant
-import java.util.Properties
 import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 class BatchTransporter private constructor(
-    private val brokers: String,
     private val batchSize: Int,
     private val intervalMs: Long
 ) {
+
+    private val ingestUrl: String = run {
+        System.getenv("LOGFRIENDS_INGEST_URL")
+            ?: System.getProperty("logfriends.ingest.url", "http://localhost:8082/ingest")
+    }
 
     private val queue: BlockingQueue<AgentEvent>
     private val scheduler: ScheduledExecutorService
@@ -32,18 +33,14 @@ class BatchTransporter private constructor(
     @Volatile
     private var workerId: String = "unknown"
 
-    // 첫 전송 시점까지 KafkaProducer 초기화를 지연 (slf4j 로드 보장)
-    private val producer: KafkaProducer<String, ByteArray> by lazy {
-        val props = Properties().apply {
-            put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokers)
-            put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer::class.java.name)
-            put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer::class.java.name)
-            put(ProducerConfig.ACKS_CONFIG, "1")
-            put(ProducerConfig.RETRIES_CONFIG, 3)
-            put(ProducerConfig.LINGER_MS_CONFIG, 5)
-            put(ProducerConfig.RECONNECT_BACKOFF_MS_CONFIG, 1000)
-        }
-        KafkaProducer(props)
+    fun setWorkerId(id: String) {
+        workerId = id
+    }
+
+    private val httpClient: HttpClient by lazy {
+        HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .build()
     }
 
     init {
@@ -82,7 +79,9 @@ class BatchTransporter private constructor(
 
     fun enqueueHttp(
         method: String, uri: String, statusCode: Int,
-        durationMs: Long, traceId: String?
+        durationMs: Long, traceId: String?,
+        requestHeaders: Map<String, String>? = null,
+        exceptionStack: String? = null
     ) {
         val proto = HttpEvent.newBuilder()
             .setTimestamp(Instant.now().toString())
@@ -90,14 +89,18 @@ class BatchTransporter private constructor(
             .setUri(uri)
             .setStatusCode(statusCode)
             .setDurationMs(durationMs)
-            .apply { if (!traceId.isNullOrEmpty()) setTraceId(traceId) }
+            .apply {
+                if (!traceId.isNullOrEmpty()) setTraceId(traceId)
+                if (!requestHeaders.isNullOrEmpty()) putAllRequestHeaders(requestHeaders)
+                if (!exceptionStack.isNullOrEmpty()) setExceptionStack(exceptionStack)
+            }
             .build()
         enqueue(AgentEvent.newBuilder().setHttp(proto).build())
     }
 
     fun enqueueJdbc(
         sql: String, durationMs: Long, rowCount: Int,
-        traceId: String?, exception: String?
+        traceId: String?, exception: String?, exceptionStack: String? = null
     ) {
         val proto = com.logfriends.agent.proto.JdbcEvent.newBuilder()
             .setTimestamp(Instant.now().toString())
@@ -107,6 +110,7 @@ class BatchTransporter private constructor(
             .apply {
                 if (!traceId.isNullOrEmpty()) setTraceId(traceId)
                 if (!exception.isNullOrEmpty()) setException(exception)
+                if (!exceptionStack.isNullOrEmpty()) setExceptionStack(exceptionStack)
             }
             .build()
         enqueue(AgentEvent.newBuilder().setJdbc(proto).build())
@@ -114,7 +118,7 @@ class BatchTransporter private constructor(
 
     fun enqueueMethodTrace(
         className: String, methodName: String, durationMs: Long,
-        traceId: String?, exception: String?
+        traceId: String?, exception: String?, exceptionStack: String? = null
     ) {
         val proto = com.logfriends.agent.proto.MethodTraceEvent.newBuilder()
             .setTimestamp(Instant.now().toString())
@@ -124,6 +128,7 @@ class BatchTransporter private constructor(
             .apply {
                 if (!traceId.isNullOrEmpty()) setTraceId(traceId)
                 if (!exception.isNullOrEmpty()) setException(exception)
+                if (!exceptionStack.isNullOrEmpty()) setExceptionStack(exceptionStack)
             }
             .build()
         enqueue(AgentEvent.newBuilder().setMethodTrace(proto).build())
@@ -146,7 +151,6 @@ class BatchTransporter private constructor(
         running.set(false)
         flush()
         scheduler.shutdown()
-        producer.close()
     }
 
     val stats: String
@@ -167,30 +171,116 @@ class BatchTransporter private constructor(
         queue.drainTo(buffer, batchSize)
         if (buffer.isEmpty()) return
 
-        val batch = BatchPayload.newBuilder().addAllEvents(buffer).build()
-        val msg = AgentMessage.newBuilder()
-            .setWorkerId(workerId)
-            .setBatch(batch)
-            .build()
-
+        val json = buildJson(workerId, buffer)
         try {
-            val record = ProducerRecord("log-friends.batch", workerId, msg.toByteArray())
-            producer.send(record) { _, ex ->
-                if (ex != null) {
-                    System.err.println("[Log Friends] Batch send failed: ${ex.message}")
-                    buffer.forEach { queue.offer(it) }
-                } else {
-                    sentCount.addAndGet(buffer.size.toLong())
-                }
+            val request = HttpRequest.newBuilder()
+                .uri(URI.create(ingestUrl))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .timeout(Duration.ofSeconds(10))
+                .build()
+            val response = httpClient.send(request, HttpResponse.BodyHandlers.discarding())
+            if (response.statusCode() !in 200..299) {
+                throw RuntimeException("HTTP ${response.statusCode()}")
             }
+            sentCount.addAndGet(buffer.size.toLong())
         } catch (e: Exception) {
             System.err.println("[Log Friends] Batch flush error: ${e.message}")
             buffer.forEach { queue.offer(it) }
         }
     }
 
+    private fun buildJson(workerId: String, events: List<AgentEvent>): String {
+        val sb = StringBuilder()
+        sb.append("{\"workerId\":\"").append(esc(workerId)).append("\",\"events\":[")
+        events.forEachIndexed { i, evt ->
+            if (i > 0) sb.append(",")
+            sb.append(eventToJson(evt))
+        }
+        sb.append("]}")
+        return sb.toString()
+    }
+
+    private fun eventToJson(evt: AgentEvent): String {
+        val sb = StringBuilder()
+        when {
+            evt.hasLog() -> {
+                val e = evt.log
+                sb.append("{\"type\":\"LOG\"")
+                sb.append(",\"timestamp\":\"").append(esc(e.timestamp)).append("\"")
+                sb.append(",\"level\":\"").append(esc(e.level)).append("\"")
+                sb.append(",\"loggerName\":\"").append(esc(e.loggerName)).append("\"")
+                sb.append(",\"threadName\":\"").append(esc(e.threadName)).append("\"")
+                sb.append(",\"message\":\"").append(esc(e.message)).append("\"")
+                if (e.traceId.isNotBlank()) sb.append(",\"traceId\":\"").append(esc(e.traceId)).append("\"")
+                if (e.exception.isNotBlank()) sb.append(",\"exception\":\"").append(esc(e.exception)).append("\"")
+                if (e.mdcMap.isNotEmpty()) sb.append(",\"mdc\":").append(mapToJson(e.mdcMap))
+            }
+            evt.hasHttp() -> {
+                val e = evt.http
+                sb.append("{\"type\":\"HTTP\"")
+                sb.append(",\"timestamp\":\"").append(esc(e.timestamp)).append("\"")
+                sb.append(",\"method\":\"").append(esc(e.method)).append("\"")
+                sb.append(",\"uri\":\"").append(esc(e.uri)).append("\"")
+                sb.append(",\"statusCode\":").append(e.statusCode)
+                sb.append(",\"durationMs\":").append(e.durationMs)
+                if (e.traceId.isNotBlank()) sb.append(",\"traceId\":\"").append(esc(e.traceId)).append("\"")
+                if (e.exceptionStack.isNotBlank()) sb.append(",\"exceptionStack\":\"").append(esc(e.exceptionStack)).append("\"")
+                if (e.requestHeadersMap.isNotEmpty()) sb.append(",\"requestHeaders\":").append(mapToJson(e.requestHeadersMap))
+            }
+            evt.hasJdbc() -> {
+                val e = evt.jdbc
+                sb.append("{\"type\":\"JDBC\"")
+                sb.append(",\"timestamp\":\"").append(esc(e.timestamp)).append("\"")
+                sb.append(",\"sql\":\"").append(esc(e.sql)).append("\"")
+                sb.append(",\"durationMs\":").append(e.durationMs)
+                sb.append(",\"rowCount\":").append(e.rowCount)
+                if (e.traceId.isNotBlank()) sb.append(",\"traceId\":\"").append(esc(e.traceId)).append("\"")
+                if (e.exception.isNotBlank()) sb.append(",\"exception\":\"").append(esc(e.exception)).append("\"")
+                if (e.exceptionStack.isNotBlank()) sb.append(",\"exceptionStack\":\"").append(esc(e.exceptionStack)).append("\"")
+            }
+            evt.hasMethodTrace() -> {
+                val e = evt.methodTrace
+                sb.append("{\"type\":\"METHOD_TRACE\"")
+                sb.append(",\"timestamp\":\"").append(esc(e.timestamp)).append("\"")
+                sb.append(",\"className\":\"").append(esc(e.className)).append("\"")
+                sb.append(",\"methodName\":\"").append(esc(e.methodName)).append("\"")
+                sb.append(",\"durationMs\":").append(e.durationMs)
+                if (e.traceId.isNotBlank()) sb.append(",\"traceId\":\"").append(esc(e.traceId)).append("\"")
+                if (e.exception.isNotBlank()) sb.append(",\"exception\":\"").append(esc(e.exception)).append("\"")
+                if (e.exceptionStack.isNotBlank()) sb.append(",\"exceptionStack\":\"").append(esc(e.exceptionStack)).append("\"")
+            }
+            evt.hasLogEvent() -> {
+                val e = evt.logEvent
+                sb.append("{\"type\":\"LOG_EVENT\"")
+                sb.append(",\"timestamp\":\"").append(esc(e.timestamp)).append("\"")
+                sb.append(",\"eventName\":\"").append(esc(e.eventName)).append("\"")
+                if (e.fieldsMap.isNotEmpty()) sb.append(",\"fields\":").append(mapToJson(e.fieldsMap))
+            }
+            else -> sb.append("{\"type\":\"UNKNOWN\"")
+        }
+        sb.append("}")
+        return sb.toString()
+    }
+
+    private fun mapToJson(map: Map<String, String>): String {
+        val sb = StringBuilder("{")
+        map.entries.forEachIndexed { i, (k, v) ->
+            if (i > 0) sb.append(",")
+            sb.append("\"").append(esc(k)).append("\":\"").append(esc(v)).append("\"")
+        }
+        sb.append("}")
+        return sb.toString()
+    }
+
+    private fun esc(s: String): String = s
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+
     companion object {
-        private const val DEFAULT_BROKERS = "localhost:9092"
         private const val DEFAULT_BATCH_SIZE = 100
         private const val DEFAULT_INTERVAL_MS = 500L
 
@@ -201,11 +291,9 @@ class BatchTransporter private constructor(
         fun getInstance(): BatchTransporter {
             return instance ?: synchronized(this) {
                 instance ?: run {
-                    val brokers = System.getenv("LOGFRIENDS_KAFKA_BROKERS")
-                        ?: System.getProperty("logfriends.kafka.brokers", DEFAULT_BROKERS)
                     val batch = System.getProperty("logfriends.batch.size", DEFAULT_BATCH_SIZE.toString()).toInt()
                     val interval = System.getProperty("logfriends.batch.interval.ms", DEFAULT_INTERVAL_MS.toString()).toLong()
-                    BatchTransporter(brokers, batch, interval).also { instance = it }
+                    BatchTransporter(batch, interval).also { instance = it }
                 }
             }
         }

@@ -20,6 +20,7 @@ object JdbcInterceptor {
         val sql = extractSql(statement)
         val start = System.currentTimeMillis()
         var exception: String? = null
+        var exceptionStack: String? = null
         var rowCount = -1
 
         return try {
@@ -28,10 +29,11 @@ object JdbcInterceptor {
             result
         } catch (e: Exception) {
             exception = e.message
+            exceptionStack = e.stackTraceToString()
             throw e
         } finally {
             val duration = System.currentTimeMillis() - start
-            BatchTransporter.getInstance().enqueueJdbc(sql, duration, rowCount, null, exception)
+            BatchTransporter.getInstance().enqueueJdbc(sql, duration, rowCount, null, exception, exceptionStack)
         }
     }
 

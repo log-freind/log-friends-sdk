@@ -9,12 +9,15 @@ import java.lang.instrument.Instrumentation
 object InstrumentationRegistry {
 
     fun installAll(inst: Instrumentation) {
-        installSpring(inst)
-        installLogback(inst)
-        installJdbc(inst)
-        installMethodTrace(inst)
-        installLogEvent(inst)
+        if (isEnabled("http"))          installSpring(inst)
+        if (isEnabled("logback"))       installLogback(inst)
+        if (isEnabled("jdbc"))          installJdbc(inst)
+        if (isEnabled("method_trace"))  installMethodTrace(inst)
+        if (isEnabled("log_event"))     installLogEvent(inst)
     }
+
+    private fun isEnabled(key: String): Boolean =
+        System.getProperty("logfriends.interceptor.$key.enabled", "true") != "false"
 
     private fun installSpring(inst: Instrumentation) {
         AgentBuilder.Default()
