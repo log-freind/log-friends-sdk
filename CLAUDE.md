@@ -7,7 +7,7 @@ Spring Boot 앱을 **코드 수정 없이** 계측하는 Observability SDK. Byte
 - Kotlin 2.3.20 / JVM 21
 - ByteBuddy 1.15.11 / Protobuf 3.25.3
 - Spring Boot AutoConfigure 3.3.0 (compileOnly)
-- JitPack 배포: `com.github.log-friends:log-friends-sdk:v1.1.0`
+- JitPack 배포: `com.github.log-friends:log-friends-sdk:v1.2.0`
 
 ## 빌드 & 실행
 ```bash
