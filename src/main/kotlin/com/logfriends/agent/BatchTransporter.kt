@@ -19,23 +19,16 @@ class BatchTransporter private constructor(
     private val intervalMs: Long
 ) {
 
-    private val ingestUrl: String = run {
-        System.getenv("LOGFRIENDS_INGEST_URL")
-            ?: System.getProperty("logfriends.ingest.url", "http://localhost:8082/ingest")
-    }
+    private val ingestUrl: String = LogFriendsRuntime.ingestUrl ?: ""
 
     private val queue: BlockingQueue<AgentEvent>
     private val scheduler: ScheduledExecutorService
     private val running = AtomicBoolean(true)
     private val sentCount = AtomicLong(0)
     private val dropCount = AtomicLong(0)
+    private val lastDropWarnAt = AtomicLong(0)
 
-    @Volatile
-    private var workerId: String = "unknown"
-
-    fun setWorkerId(id: String) {
-        workerId = id
-    }
+    private val workerId: String = LogFriendsRuntime.workerId ?: ""
 
     private val httpClient: HttpClient by lazy {
         HttpClient.newBuilder()
@@ -59,8 +52,7 @@ class BatchTransporter private constructor(
 
     fun enqueueLog(
         level: String, loggerName: String, threadName: String,
-        message: String, traceId: String?, exception: String?,
-        mdc: Map<String, String>?
+        message: String, exception: String?
     ) {
         val proto = LogEvent.newBuilder()
             .setTimestamp(Instant.now().toString())
@@ -69,9 +61,7 @@ class BatchTransporter private constructor(
             .setThreadName(threadName)
             .setMessage(message)
             .apply {
-                if (!traceId.isNullOrEmpty()) setTraceId(traceId)
                 if (!exception.isNullOrEmpty()) setException(exception)
-                if (!mdc.isNullOrEmpty()) putAllMdc(mdc)
             }
             .build()
         enqueue(AgentEvent.newBuilder().setLog(proto).build())
@@ -79,9 +69,7 @@ class BatchTransporter private constructor(
 
     fun enqueueHttp(
         method: String, uri: String, statusCode: Int,
-        durationMs: Long, traceId: String?,
-        requestHeaders: Map<String, String>? = null,
-        exceptionStack: String? = null
+        durationMs: Long
     ) {
         val proto = HttpEvent.newBuilder()
             .setTimestamp(Instant.now().toString())
@@ -89,18 +77,13 @@ class BatchTransporter private constructor(
             .setUri(uri)
             .setStatusCode(statusCode)
             .setDurationMs(durationMs)
-            .apply {
-                if (!traceId.isNullOrEmpty()) setTraceId(traceId)
-                if (!requestHeaders.isNullOrEmpty()) putAllRequestHeaders(requestHeaders)
-                if (!exceptionStack.isNullOrEmpty()) setExceptionStack(exceptionStack)
-            }
             .build()
         enqueue(AgentEvent.newBuilder().setHttp(proto).build())
     }
 
     fun enqueueJdbc(
         sql: String, durationMs: Long, rowCount: Int,
-        traceId: String?, exception: String?, exceptionStack: String? = null
+        exception: String?
     ) {
         val proto = com.logfriends.agent.proto.JdbcEvent.newBuilder()
             .setTimestamp(Instant.now().toString())
@@ -108,9 +91,7 @@ class BatchTransporter private constructor(
             .setDurationMs(durationMs)
             .setRowCount(rowCount)
             .apply {
-                if (!traceId.isNullOrEmpty()) setTraceId(traceId)
                 if (!exception.isNullOrEmpty()) setException(exception)
-                if (!exceptionStack.isNullOrEmpty()) setExceptionStack(exceptionStack)
             }
             .build()
         enqueue(AgentEvent.newBuilder().setJdbc(proto).build())
@@ -118,7 +99,7 @@ class BatchTransporter private constructor(
 
     fun enqueueMethodTrace(
         className: String, methodName: String, durationMs: Long,
-        traceId: String?, exception: String?, exceptionStack: String? = null
+        exception: String?
     ) {
         val proto = com.logfriends.agent.proto.MethodTraceEvent.newBuilder()
             .setTimestamp(Instant.now().toString())
@@ -126,18 +107,25 @@ class BatchTransporter private constructor(
             .setMethodName(methodName)
             .setDurationMs(durationMs)
             .apply {
-                if (!traceId.isNullOrEmpty()) setTraceId(traceId)
                 if (!exception.isNullOrEmpty()) setException(exception)
-                if (!exceptionStack.isNullOrEmpty()) setExceptionStack(exceptionStack)
             }
             .build()
         enqueue(AgentEvent.newBuilder().setMethodTrace(proto).build())
     }
 
-    fun enqueueLogEvent(eventName: String, paramNames: Array<String>, args: Array<Any?>) {
+    fun enqueueLogEvent(
+        eventName: String,
+        paramNames: Array<String>,
+        args: Array<Any?>,
+        maskedParams: BooleanArray = BooleanArray(paramNames.size)
+    ) {
         val fields = mutableMapOf<String, String>()
         for (i in paramNames.indices) {
-            fields[paramNames[i]] = args.getOrNull(i)?.toString() ?: ""
+            fields[paramNames[i]] = LogMasker.toJsonValue(
+                paramNames[i],
+                args.getOrNull(i),
+                maskedParams.getOrNull(i) == true
+            )
         }
         val proto = LogEventCapture.newBuilder()
             .setTimestamp(Instant.now().toString())
@@ -157,11 +145,41 @@ class BatchTransporter private constructor(
         get() = "sent=${sentCount.get()}, dropped=${dropCount.get()}, queued=${queue.size}"
 
     private fun enqueue(event: AgentEvent) {
-        if (!queue.offer(event)) {
+        if (workerId.isBlank() || ingestUrl.isBlank()) {
             dropCount.incrementAndGet()
+            return
+        }
+
+        if (!offerWithTimeout(event)) {
+            dropCount.incrementAndGet()
+            warnDroppedEventsIfNeeded()
         }
         if (queue.size >= batchSize) {
             scheduler.execute(this::flush)
+        }
+    }
+
+    private fun offerWithTimeout(event: AgentEvent): Boolean {
+        return try {
+            queue.offer(event, QUEUE_OFFER_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        }
+    }
+
+    private fun warnDroppedEventsIfNeeded() {
+        val now = System.currentTimeMillis()
+        val previous = lastDropWarnAt.get()
+        if (now - previous < DROP_WARN_INTERVAL_MS) {
+            return
+        }
+
+        if (lastDropWarnAt.compareAndSet(previous, now)) {
+            System.err.println(
+                "[Log Friends] Dropped events because SDK queue is full. " +
+                    "dropped=${dropCount.get()}, queued=${queue.size}"
+            )
         }
     }
 
@@ -185,8 +203,8 @@ class BatchTransporter private constructor(
             }
             sentCount.addAndGet(buffer.size.toLong())
         } catch (e: Exception) {
-            System.err.println("[Log Friends] Batch flush error: ${e.message}")
-            buffer.forEach { queue.offer(it) }
+            dropCount.addAndGet(buffer.size.toLong())
+            System.err.println("[Log Friends] Batch flush failed; dropped ${buffer.size} events: ${e.message}")
         }
     }
 
@@ -212,9 +230,7 @@ class BatchTransporter private constructor(
                 sb.append(",\"loggerName\":\"").append(esc(e.loggerName)).append("\"")
                 sb.append(",\"threadName\":\"").append(esc(e.threadName)).append("\"")
                 sb.append(",\"message\":\"").append(esc(e.message)).append("\"")
-                if (e.traceId.isNotBlank()) sb.append(",\"traceId\":\"").append(esc(e.traceId)).append("\"")
                 if (e.exception.isNotBlank()) sb.append(",\"exception\":\"").append(esc(e.exception)).append("\"")
-                if (e.mdcMap.isNotEmpty()) sb.append(",\"mdc\":").append(mapToJson(e.mdcMap))
             }
             evt.hasHttp() -> {
                 val e = evt.http
@@ -224,9 +240,6 @@ class BatchTransporter private constructor(
                 sb.append(",\"uri\":\"").append(esc(e.uri)).append("\"")
                 sb.append(",\"statusCode\":").append(e.statusCode)
                 sb.append(",\"durationMs\":").append(e.durationMs)
-                if (e.traceId.isNotBlank()) sb.append(",\"traceId\":\"").append(esc(e.traceId)).append("\"")
-                if (e.exceptionStack.isNotBlank()) sb.append(",\"exceptionStack\":\"").append(esc(e.exceptionStack)).append("\"")
-                if (e.requestHeadersMap.isNotEmpty()) sb.append(",\"requestHeaders\":").append(mapToJson(e.requestHeadersMap))
             }
             evt.hasJdbc() -> {
                 val e = evt.jdbc
@@ -235,9 +248,7 @@ class BatchTransporter private constructor(
                 sb.append(",\"sql\":\"").append(esc(e.sql)).append("\"")
                 sb.append(",\"durationMs\":").append(e.durationMs)
                 sb.append(",\"rowCount\":").append(e.rowCount)
-                if (e.traceId.isNotBlank()) sb.append(",\"traceId\":\"").append(esc(e.traceId)).append("\"")
                 if (e.exception.isNotBlank()) sb.append(",\"exception\":\"").append(esc(e.exception)).append("\"")
-                if (e.exceptionStack.isNotBlank()) sb.append(",\"exceptionStack\":\"").append(esc(e.exceptionStack)).append("\"")
             }
             evt.hasMethodTrace() -> {
                 val e = evt.methodTrace
@@ -246,16 +257,14 @@ class BatchTransporter private constructor(
                 sb.append(",\"className\":\"").append(esc(e.className)).append("\"")
                 sb.append(",\"methodName\":\"").append(esc(e.methodName)).append("\"")
                 sb.append(",\"durationMs\":").append(e.durationMs)
-                if (e.traceId.isNotBlank()) sb.append(",\"traceId\":\"").append(esc(e.traceId)).append("\"")
                 if (e.exception.isNotBlank()) sb.append(",\"exception\":\"").append(esc(e.exception)).append("\"")
-                if (e.exceptionStack.isNotBlank()) sb.append(",\"exceptionStack\":\"").append(esc(e.exceptionStack)).append("\"")
             }
             evt.hasLogEvent() -> {
                 val e = evt.logEvent
                 sb.append("{\"type\":\"LOG_EVENT\"")
                 sb.append(",\"timestamp\":\"").append(esc(e.timestamp)).append("\"")
                 sb.append(",\"eventName\":\"").append(esc(e.eventName)).append("\"")
-                if (e.fieldsMap.isNotEmpty()) sb.append(",\"fields\":").append(mapToJson(e.fieldsMap))
+                sb.append(",\"payload\":").append(jsonLiteralMapToJson(e.fieldsMap))
             }
             else -> sb.append("{\"type\":\"UNKNOWN\"")
         }
@@ -273,6 +282,16 @@ class BatchTransporter private constructor(
         return sb.toString()
     }
 
+    private fun jsonLiteralMapToJson(map: Map<String, String>): String {
+        val sb = StringBuilder("{")
+        map.entries.forEachIndexed { i, (k, v) ->
+            if (i > 0) sb.append(",")
+            sb.append("\"").append(esc(k)).append("\":").append(v)
+        }
+        sb.append("}")
+        return sb.toString()
+    }
+
     private fun esc(s: String): String = s
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
@@ -283,6 +302,8 @@ class BatchTransporter private constructor(
     companion object {
         private const val DEFAULT_BATCH_SIZE = 100
         private const val DEFAULT_INTERVAL_MS = 500L
+        private const val QUEUE_OFFER_TIMEOUT_MS = 10L
+        private const val DROP_WARN_INTERVAL_MS = 60_000L
 
         @Volatile
         private var instance: BatchTransporter? = null
