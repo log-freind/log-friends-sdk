@@ -55,6 +55,39 @@ class EventJsonWriterTest {
     }
 
     @Test
+    fun `log event keeps eventName unchanged and writes empty payload object`() {
+        val event = AgentEventFactory.logEvent(
+            eventName = "orderCreated",
+            paramNames = emptyArray(),
+            args = emptyArray(),
+            maskedParams = BooleanArray(0)
+        )
+
+        val json = EventJsonWriter.writeBatch("worker-1", listOf(event))
+
+        assertTrue(json.contains("\"type\":\"LOG_EVENT\""))
+        assertTrue(json.contains("\"eventName\":\"orderCreated\""))
+        assertTrue(json.contains("\"payload\":{}"))
+    }
+
+    @Test
+    fun `log event fallback arg names are serialized deterministically`() {
+        val event = AgentEventFactory.logEvent(
+            eventName = "orderCreated",
+            paramNames = arrayOf("arg0", "arg1"),
+            args = arrayOf(1001L, "paid"),
+            maskedParams = BooleanArray(2)
+        )
+
+        val json = EventJsonWriter.writeBatch("worker-1", listOf(event))
+
+        assertTrue(json.contains("\"eventName\":\"orderCreated\""))
+        assertTrue(json.contains("\"payload\":{"))
+        assertTrue(json.contains("\"arg0\":1001"))
+        assertTrue(json.contains("\"arg1\":\"paid\""))
+    }
+
+    @Test
     fun `writes all first phase event type names`() {
         val events = listOf(
             AgentEvent.newBuilder()
