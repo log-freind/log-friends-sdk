@@ -7,6 +7,13 @@ import net.bytebuddy.matcher.ElementMatchers
 import java.lang.instrument.Instrumentation
 
 object InstrumentationRegistry {
+    internal val supportedInterceptorKeys = listOf(
+        "http",
+        "logback",
+        "jdbc",
+        "method_trace",
+        "log_event"
+    )
 
     fun installAll(inst: Instrumentation) {
         if (isEnabled("http"))          installSpring(inst)
@@ -16,8 +23,9 @@ object InstrumentationRegistry {
         if (isEnabled("log_event"))     installLogEvent(inst)
     }
 
-    private fun isEnabled(key: String): Boolean =
-        System.getProperty("logfriends.interceptor.$key.enabled", "true") != "false"
+    internal fun isEnabled(key: String): Boolean =
+        !System.getProperty("logfriends.interceptor.$key.enabled", "true")
+            .equals("false", ignoreCase = true)
 
     private fun installSpring(inst: Instrumentation) {
         AgentBuilder.Default()
