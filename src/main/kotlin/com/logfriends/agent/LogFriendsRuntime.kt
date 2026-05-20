@@ -47,21 +47,23 @@ object LogFriendsRuntime {
     }
 
     private fun resolveWorkerId(environment: ConfigurableEnvironment): String? {
-        return listOf(
+        return resolveConfiguredValue(
             System.getenv("LOGFRIENDS_WORKER_ID"),
             environment.getProperty("LOGFRIENDS_WORKER_ID"),
             environment.getProperty("logfriends.worker.id")
         )
-            .firstOrNull { !it.isNullOrBlank() }
-            ?.trim()
     }
 
     private fun resolveIngestUrl(environment: ConfigurableEnvironment): String? {
-        return listOf(
+        return resolveConfiguredValue(
             System.getenv("LOGFRIENDS_INGEST_URL"),
             environment.getProperty("LOGFRIENDS_INGEST_URL"),
             environment.getProperty("logfriends.ingest.url")
         )
+    }
+
+    internal fun resolveConfiguredValue(vararg candidates: String?): String? {
+        return candidates.asSequence()
             .firstOrNull { !it.isNullOrBlank() }
             ?.trim()
     }
