@@ -38,9 +38,10 @@ class LogFriendsAutoConfiguration {
                 transporter.shutdown()
             }, "log-friends-shutdown"))
 
-            val kafkaBrokers = System.getenv("LOGFRIENDS_KAFKA_BROKERS")
-                ?: System.getProperty("logfriends.kafka.brokers", "localhost:9092")
-            println("[Log Friends] Agent ready. Kafka brokers: $kafkaBrokers")
+            println(
+                "[Log Friends] Agent ready. " +
+                    "workerId=${LogFriendsRuntime.workerId}, ingestUrl=${LogFriendsRuntime.ingestUrl}"
+            )
         }
     }
 }

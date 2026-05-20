@@ -18,7 +18,7 @@ dependencies {
     implementation("net.bytebuddy:byte-buddy:1.15.11")
     implementation("net.bytebuddy:byte-buddy-agent:1.15.11")
 
-    // Protobuf - 직렬화
+    // Protobuf - internal event model only; HTTP transport sends JSON.
     implementation("com.google.protobuf:protobuf-java:3.25.3")
 
     // Spring Boot AutoConfigure - 컴파일 전용 (Spring 없는 환경도 지원)

@@ -31,7 +31,8 @@ message HttpEvent {
   map<string, string> request_headers = 9;
 }
 
-// 모든 Kafka 메시지의 최상위 래퍼
+// 내부 이벤트 모델의 최상위 래퍼.
+// 현재 SDK 전송 포맷은 Protobuf가 아니라 HTTP JSON POST /ingest 이다.
 message AgentMessage {
   string worker_id = 1;
 
@@ -41,7 +42,7 @@ message AgentMessage {
   }
 }
 
-// 워커 최초 등록 (기동 5초 후 1회 전송)
+// 1차 런타임 경로에서는 자동 워커 등록에 사용하지 않는다.
 message HandshakePayload {
   string           worker_name = 1;
   repeated SpecDef specs       = 2;
@@ -66,7 +67,7 @@ message FieldDef {
   string description = 5;
 }
 
-// 로그 배치 전송 (100건 or 500ms마다 플러시)
+// 내부 배치 표현. 실제 전송 시에는 JSON으로 직렬화한다.
 message BatchPayload {
   repeated AgentEvent events = 1;
 }
