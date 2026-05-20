@@ -1,15 +1,6 @@
 package com.logfriends.agent
 
 import com.logfriends.agent.proto.AgentEvent
-import com.logfriends.agent.proto.HttpEvent
-import com.logfriends.agent.proto.LogEvent
-import com.logfriends.agent.proto.LogEventCapture
-import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
-import java.time.Duration
-import java.time.Instant
 import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -30,11 +21,7 @@ class BatchTransporter private constructor(
 
     private val workerId: String = LogFriendsRuntime.workerId ?: ""
 
-    private val httpClient: HttpClient by lazy {
-        HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5))
-            .build()
-    }
+    private val ingestClient: IngestHttpClient by lazy { IngestHttpClient(ingestUrl) }
 
     init {
         val queueCapacity = System.getProperty("logfriends.queue.capacity", "10000").toInt()
@@ -54,63 +41,28 @@ class BatchTransporter private constructor(
         level: String, loggerName: String, threadName: String,
         message: String, exception: String?
     ) {
-        val proto = LogEvent.newBuilder()
-            .setTimestamp(Instant.now().toString())
-            .setLevel(level)
-            .setLoggerName(loggerName)
-            .setThreadName(threadName)
-            .setMessage(message)
-            .apply {
-                if (!exception.isNullOrEmpty()) setException(exception)
-            }
-            .build()
-        enqueue(AgentEvent.newBuilder().setLog(proto).build())
+        enqueue(AgentEventFactory.log(level, loggerName, threadName, message, exception))
     }
 
     fun enqueueHttp(
         method: String, uri: String, statusCode: Int,
         durationMs: Long
     ) {
-        val proto = HttpEvent.newBuilder()
-            .setTimestamp(Instant.now().toString())
-            .setMethod(method)
-            .setUri(uri)
-            .setStatusCode(statusCode)
-            .setDurationMs(durationMs)
-            .build()
-        enqueue(AgentEvent.newBuilder().setHttp(proto).build())
+        enqueue(AgentEventFactory.http(method, uri, statusCode, durationMs))
     }
 
     fun enqueueJdbc(
         sql: String, durationMs: Long, rowCount: Int,
         exception: String?
     ) {
-        val proto = com.logfriends.agent.proto.JdbcEvent.newBuilder()
-            .setTimestamp(Instant.now().toString())
-            .setSql(sql)
-            .setDurationMs(durationMs)
-            .setRowCount(rowCount)
-            .apply {
-                if (!exception.isNullOrEmpty()) setException(exception)
-            }
-            .build()
-        enqueue(AgentEvent.newBuilder().setJdbc(proto).build())
+        enqueue(AgentEventFactory.jdbc(sql, durationMs, rowCount, exception))
     }
 
     fun enqueueMethodTrace(
         className: String, methodName: String, durationMs: Long,
         exception: String?
     ) {
-        val proto = com.logfriends.agent.proto.MethodTraceEvent.newBuilder()
-            .setTimestamp(Instant.now().toString())
-            .setClassName(className)
-            .setMethodName(methodName)
-            .setDurationMs(durationMs)
-            .apply {
-                if (!exception.isNullOrEmpty()) setException(exception)
-            }
-            .build()
-        enqueue(AgentEvent.newBuilder().setMethodTrace(proto).build())
+        enqueue(AgentEventFactory.methodTrace(className, methodName, durationMs, exception))
     }
 
     fun enqueueLogEvent(
@@ -119,20 +71,7 @@ class BatchTransporter private constructor(
         args: Array<Any?>,
         maskedParams: BooleanArray = BooleanArray(paramNames.size)
     ) {
-        val fields = mutableMapOf<String, String>()
-        for (i in paramNames.indices) {
-            fields[paramNames[i]] = LogMasker.toJsonValue(
-                paramNames[i],
-                args.getOrNull(i),
-                maskedParams.getOrNull(i) == true
-            )
-        }
-        val proto = LogEventCapture.newBuilder()
-            .setTimestamp(Instant.now().toString())
-            .setEventName(eventName)
-            .putAllFields(fields)
-            .build()
-        enqueue(AgentEvent.newBuilder().setLogEvent(proto).build())
+        enqueue(AgentEventFactory.logEvent(eventName, paramNames, args, maskedParams))
     }
 
     fun shutdown() {
@@ -189,115 +128,15 @@ class BatchTransporter private constructor(
         queue.drainTo(buffer, batchSize)
         if (buffer.isEmpty()) return
 
-        val json = buildJson(workerId, buffer)
+        val json = EventJsonWriter.writeBatch(workerId, buffer)
         try {
-            val request = HttpRequest.newBuilder()
-                .uri(URI.create(ingestUrl))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(json))
-                .timeout(Duration.ofSeconds(10))
-                .build()
-            val response = httpClient.send(request, HttpResponse.BodyHandlers.discarding())
-            if (response.statusCode() !in 200..299) {
-                throw RuntimeException("HTTP ${response.statusCode()}")
-            }
+            ingestClient.post(json)
             sentCount.addAndGet(buffer.size.toLong())
         } catch (e: Exception) {
             dropCount.addAndGet(buffer.size.toLong())
             System.err.println("[Log Friends] Batch flush failed; dropped ${buffer.size} events: ${e.message}")
         }
     }
-
-    private fun buildJson(workerId: String, events: List<AgentEvent>): String {
-        val sb = StringBuilder()
-        sb.append("{\"workerId\":\"").append(esc(workerId)).append("\",\"events\":[")
-        events.forEachIndexed { i, evt ->
-            if (i > 0) sb.append(",")
-            sb.append(eventToJson(evt))
-        }
-        sb.append("]}")
-        return sb.toString()
-    }
-
-    private fun eventToJson(evt: AgentEvent): String {
-        val sb = StringBuilder()
-        when {
-            evt.hasLog() -> {
-                val e = evt.log
-                sb.append("{\"type\":\"LOG\"")
-                sb.append(",\"timestamp\":\"").append(esc(e.timestamp)).append("\"")
-                sb.append(",\"level\":\"").append(esc(e.level)).append("\"")
-                sb.append(",\"loggerName\":\"").append(esc(e.loggerName)).append("\"")
-                sb.append(",\"threadName\":\"").append(esc(e.threadName)).append("\"")
-                sb.append(",\"message\":\"").append(esc(e.message)).append("\"")
-                if (e.exception.isNotBlank()) sb.append(",\"exception\":\"").append(esc(e.exception)).append("\"")
-            }
-            evt.hasHttp() -> {
-                val e = evt.http
-                sb.append("{\"type\":\"HTTP\"")
-                sb.append(",\"timestamp\":\"").append(esc(e.timestamp)).append("\"")
-                sb.append(",\"method\":\"").append(esc(e.method)).append("\"")
-                sb.append(",\"uri\":\"").append(esc(e.uri)).append("\"")
-                sb.append(",\"statusCode\":").append(e.statusCode)
-                sb.append(",\"durationMs\":").append(e.durationMs)
-            }
-            evt.hasJdbc() -> {
-                val e = evt.jdbc
-                sb.append("{\"type\":\"JDBC\"")
-                sb.append(",\"timestamp\":\"").append(esc(e.timestamp)).append("\"")
-                sb.append(",\"sql\":\"").append(esc(e.sql)).append("\"")
-                sb.append(",\"durationMs\":").append(e.durationMs)
-                sb.append(",\"rowCount\":").append(e.rowCount)
-                if (e.exception.isNotBlank()) sb.append(",\"exception\":\"").append(esc(e.exception)).append("\"")
-            }
-            evt.hasMethodTrace() -> {
-                val e = evt.methodTrace
-                sb.append("{\"type\":\"METHOD_TRACE\"")
-                sb.append(",\"timestamp\":\"").append(esc(e.timestamp)).append("\"")
-                sb.append(",\"className\":\"").append(esc(e.className)).append("\"")
-                sb.append(",\"methodName\":\"").append(esc(e.methodName)).append("\"")
-                sb.append(",\"durationMs\":").append(e.durationMs)
-                if (e.exception.isNotBlank()) sb.append(",\"exception\":\"").append(esc(e.exception)).append("\"")
-            }
-            evt.hasLogEvent() -> {
-                val e = evt.logEvent
-                sb.append("{\"type\":\"LOG_EVENT\"")
-                sb.append(",\"timestamp\":\"").append(esc(e.timestamp)).append("\"")
-                sb.append(",\"eventName\":\"").append(esc(e.eventName)).append("\"")
-                sb.append(",\"payload\":").append(jsonLiteralMapToJson(e.fieldsMap))
-            }
-            else -> sb.append("{\"type\":\"UNKNOWN\"")
-        }
-        sb.append("}")
-        return sb.toString()
-    }
-
-    private fun mapToJson(map: Map<String, String>): String {
-        val sb = StringBuilder("{")
-        map.entries.forEachIndexed { i, (k, v) ->
-            if (i > 0) sb.append(",")
-            sb.append("\"").append(esc(k)).append("\":\"").append(esc(v)).append("\"")
-        }
-        sb.append("}")
-        return sb.toString()
-    }
-
-    private fun jsonLiteralMapToJson(map: Map<String, String>): String {
-        val sb = StringBuilder("{")
-        map.entries.forEachIndexed { i, (k, v) ->
-            if (i > 0) sb.append(",")
-            sb.append("\"").append(esc(k)).append("\":").append(v)
-        }
-        sb.append("}")
-        return sb.toString()
-    }
-
-    private fun esc(s: String): String = s
-        .replace("\\", "\\\\")
-        .replace("\"", "\\\"")
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-        .replace("\t", "\\t")
 
     companion object {
         private const val DEFAULT_BATCH_SIZE = 100
