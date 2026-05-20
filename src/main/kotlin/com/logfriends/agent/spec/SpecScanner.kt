@@ -1,19 +1,16 @@
 package com.logfriends.agent.spec
 
-import com.logfriends.agent.BatchTransporter
-import java.net.InetAddress
+import com.logfriends.agent.LogFriendsRuntime
 
 object SpecScanner {
 
     @JvmStatic
     fun scan() {
         try {
-            val workerName = System.getProperty("spring.application.name") ?:
-                             System.getProperty("logfriends.worker.name", "unknown")
-            val host = try { InetAddress.getLocalHost().hostAddress } catch (e: Exception) { "unknown" }
-            val pid = ProcessHandle.current().pid()
-            val workerId = "$workerName-$host-$pid"
-            BatchTransporter.getInstance().setWorkerId(workerId)
+            val workerId = LogFriendsRuntime.workerId ?: run {
+                System.err.println("[Log Friends] SpecScanner skipped: workerId is not configured")
+                return
+            }
 
             val specs = LogSpecRegistry.getAll()
             println("[Log Friends] SpecScanner — workerId=$workerId, specs=${specs.size}")

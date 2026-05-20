@@ -23,17 +23,6 @@ object LogbackInterceptor {
             val threadName = safeInvoke(event, "getThreadName")
             val message = safeInvoke(event, "getFormattedMessage")
 
-            val mdc = mutableMapOf<String, String>()
-            try {
-                @Suppress("UNCHECKED_CAST")
-                val mdcMap = event.javaClass.getMethod("getMDCPropertyMap").invoke(event) as? Map<String, String>
-                if (mdcMap != null) {
-                    mdc.putAll(mdcMap)
-                }
-            } catch (ignored: Exception) {}
-
-            val traceId = mdc["traceId"] ?: mdc["trace_id"] ?: ""
-
             var exceptionStr = ""
             try {
                 val throwableProxy = event.javaClass.getMethod("getThrowableProxy").invoke(event)
@@ -44,7 +33,7 @@ object LogbackInterceptor {
 
             BatchTransporter.getInstance().enqueueLog(
                 level, loggerName, threadName, message,
-                traceId, exceptionStr, mdc
+                exceptionStr
             )
         } catch (e: Exception) {
             System.err.println("[Log Friends] Interceptor error: " + e.message)

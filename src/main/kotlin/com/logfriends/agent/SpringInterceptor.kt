@@ -8,15 +8,6 @@ import java.lang.reflect.Method
 import java.util.concurrent.Callable
 
 object SpringInterceptor {
-
-    private val CAPTURE_HEADERS: Set<String> = run {
-        val prop = System.getProperty(
-            "logfriends.http.capture.headers",
-            "traceparent,x-trace-id,x-request-id,x-b3-traceid,x-b3-spanid,user-agent,content-type"
-        )
-        prop.split(",").map { it.trim().lowercase() }.toSet()
-    }
-
     @JvmStatic
     @RuntimeType
     @Throws(Exception::class)
@@ -30,14 +21,10 @@ object SpringInterceptor {
         var httpMethod = ""
         var uri = ""
         var statusCode = 0
-        var traceId = ""
-        val capturedHeaders = mutableMapOf<String, String>()
 
         try {
             httpMethod = safeInvoke(request, "getMethod")
             uri = safeInvoke(request, "getRequestURI")
-            extractHeaders(request, capturedHeaders)
-            traceId = resolveTraceId(capturedHeaders)
         } catch (ignored: Exception) {}
 
         try {
@@ -52,8 +39,7 @@ object SpringInterceptor {
             }
 
             BatchTransporter.getInstance().enqueueHttp(
-                httpMethod, uri, statusCode, duration, traceId,
-                capturedHeaders.ifEmpty { null }, null
+                httpMethod, uri, statusCode, duration
             )
 
             return result
@@ -63,40 +49,11 @@ object SpringInterceptor {
             statusCode = 500
 
             BatchTransporter.getInstance().enqueueHttp(
-                httpMethod, uri, statusCode, duration, traceId,
-                capturedHeaders.ifEmpty { null },
-                e.stackTraceToString()
+                httpMethod, uri, statusCode, duration
             )
 
             throw e
         }
-    }
-
-    private fun extractHeaders(request: Any, out: MutableMap<String, String>) {
-        try {
-            val getHeaderNames = request.javaClass.getMethod("getHeaderNames")
-            @Suppress("UNCHECKED_CAST")
-            val names = getHeaderNames.invoke(request) as? java.util.Enumeration<String> ?: return
-            val getHeader = request.javaClass.getMethod("getHeader", String::class.java)
-            while (names.hasMoreElements()) {
-                val name = names.nextElement()?.lowercase() ?: continue
-                if (name in CAPTURE_HEADERS) {
-                    val value = getHeader.invoke(request, name)?.toString() ?: continue
-                    out[name] = value
-                }
-            }
-        } catch (ignored: Exception) {}
-    }
-
-    private fun resolveTraceId(headers: Map<String, String>): String {
-        // W3C traceparent: 00-<traceId>-<spanId>-<flags>
-        headers["traceparent"]?.let { tp ->
-            val parts = tp.split("-")
-            if (parts.size >= 2) return parts[1]
-        }
-        headers["x-trace-id"]?.let { return it }
-        headers["x-b3-traceid"]?.let { return it }
-        return ""
     }
 
     private fun safeInvoke(obj: Any, methodName: String): String {

@@ -14,6 +14,11 @@ class LogFriendsAutoConfiguration {
     @Bean
     fun logFriendsReadyListener(): ApplicationListener<ApplicationReadyEvent> {
         return ApplicationListener {
+            if (LogFriendsRuntime.isDisabled()) {
+                println("[Log Friends] Agent not started. Reason: ${LogFriendsRuntime.disabledReason()}")
+                return@ApplicationListener
+            }
+
             val executor = Executors.newSingleThreadScheduledExecutor { r ->
                 Thread(r, "log-friends-spec-scanner").apply { isDaemon = true }
             }

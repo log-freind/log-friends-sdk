@@ -18,7 +18,23 @@ class LogFriendsInstaller : EnvironmentPostProcessor {
         application: SpringApplication
     ) {
         val enabled = environment.getProperty("logfriends.agent.enabled", "true")
-        if (enabled.equals("false", ignoreCase = true)) return
+        if (enabled.equals("false", ignoreCase = true)) {
+            LogFriendsRuntime.disable("logfriends.agent.enabled=false")
+            println("[Log Friends] SDK disabled by logfriends.agent.enabled=false")
+            return
+        }
+
+        if (!LogFriendsRuntime.configureWorkerId(environment)) {
+            System.err.println("[Log Friends] SDK disabled: workerId is required")
+            System.err.println("[Log Friends] Set LOGFRIENDS_WORKER_ID or -Dlogfriends.worker.id")
+            return
+        }
+
+        if (!LogFriendsRuntime.configureIngestUrl(environment)) {
+            System.err.println("[Log Friends] SDK disabled: ingestUrl is required")
+            System.err.println("[Log Friends] Set LOGFRIENDS_INGEST_URL or -Dlogfriends.ingest.url")
+            return
+        }
 
         try {
             val inst = ByteBuddyAgent.install()

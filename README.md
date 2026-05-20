@@ -70,20 +70,20 @@ Then start the Spring Boot app normally. The SDK installs itself during Spring B
 
 | Property | Default | Description |
 |----------|---------|-------------|
-| `logfriends.ingest.url` | `http://localhost:8082/ingest` | Console ingest endpoint |
+| `logfriends.ingest.url` | none | Required Console ingest endpoint |
 | `logfriends.batch.size` | `100` | Events per batch before flushing |
 | `logfriends.batch.interval.ms` | `500` | Scheduled flush interval |
 | `logfriends.queue.capacity` | `10000` | Max in-memory queued events |
 | `logfriends.trace.threshold.ms` | `10` | Min duration for `METHOD_TRACE` events |
 | `logfriends.agent.enabled` | `true` | Disable all instrumentation when `false` |
-| `logfriends.worker.id` | none | Fixed Worker identifier. Must match the Console Agent registration |
+| `logfriends.worker.id` | none | Required fixed Worker identifier. Must match the Console Agent registration |
 
 Environment variable:
 
 | Variable | Description |
 |----------|-------------|
-| `LOGFRIENDS_INGEST_URL` | Overrides `logfriends.ingest.url` |
-| `LOGFRIENDS_WORKER_ID` | Overrides `logfriends.worker.id` |
+| `LOGFRIENDS_INGEST_URL` | Required. Overrides `logfriends.ingest.url` |
+| `LOGFRIENDS_WORKER_ID` | Required. Overrides `logfriends.worker.id` |
 
 ## Interceptor Toggles
 
@@ -111,15 +111,18 @@ The SDK sends JSON events with one of these `type` values:
 
 ```kotlin
 import com.logfriends.agent.annotation.LogEvent
+import com.logfriends.agent.annotation.LogMasked
 
 @Service
 class UserService {
-    @LogEvent("user_registered")
-    fun registerUser(userId: String, email: String) {
-        // Parameters are captured as event fields.
+    @LogEvent("userRegistered")
+    fun registerUser(userId: String, @LogMasked email: String) {
+        // Parameters are captured as LOG_EVENT payload.
     }
 }
 ```
+
+`LOG_EVENT.eventName` is required and must use camelCase. Sensitive values are sent as `"__MASKED__"`.
 
 ## Troubleshooting
 
