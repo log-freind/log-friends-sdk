@@ -45,5 +45,9 @@ Detailed SDK docs live in the GitHub Wiki:
 
 - [English Wiki Home](https://github.com/log-freind/log-friends-sdk/wiki)
 - [Korean Wiki Home](https://github.com/log-freind/log-friends-sdk/wiki/KO-Home)
+- [Japanese Wiki Home](https://github.com/log-freind/log-friends-sdk/wiki/JA-Home)
+- [Simplified Chinese Wiki Home](https://github.com/log-freind/log-friends-sdk/wiki/ZH-Home)
+- [Spanish Wiki Home](https://github.com/log-freind/log-friends-sdk/wiki/ES-Home)
+- [Portuguese Wiki Home](https://github.com/log-freind/log-friends-sdk/wiki/PT-Home)
 
 Start there for runtime configuration, masking, `LOG_EVENT` contract details, package layout, and troubleshooting.
