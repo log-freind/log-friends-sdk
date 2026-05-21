@@ -1,6 +1,7 @@
 package com.logfriends.agent.bootstrap
 
 import com.logfriends.agent.spec.SpecScanner
+import com.logfriends.agent.transport.AgentRegistrationClient
 import com.logfriends.agent.transport.BatchTransporter
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.context.event.ApplicationReadyEvent
@@ -21,7 +22,11 @@ class LogFriendsAutoConfiguration {
             }
 
             val executor = Executors.newSingleThreadScheduledExecutor { r ->
-                Thread(r, "log-friends-spec-scanner").apply { isDaemon = true }
+                Thread(r, "log-friends-startup").apply { isDaemon = true }
+            }
+
+            executor.execute {
+                registerAgent()
             }
 
             // 5초 딜레이: Spring @Bean 초기화 완료 후 스펙 스캔
@@ -43,6 +48,25 @@ class LogFriendsAutoConfiguration {
                 "[Log Friends] Agent ready. " +
                     "workerId=${LogFriendsRuntime.workerId}, ingestUrl=${LogFriendsRuntime.ingestUrl}"
             )
+        }
+    }
+
+    private fun registerAgent() {
+        val workerId = LogFriendsRuntime.workerId ?: return
+        val ingestUrl = LogFriendsRuntime.ingestUrl ?: return
+        val appName = LogFriendsRuntime.appName ?: run {
+            System.err.println(
+                "[Log Friends] Agent auto-registration skipped: appName is missing. " +
+                    "Set LOGFRIENDS_APP_NAME, logfriends.app.name, or spring.application.name"
+            )
+            return
+        }
+
+        try {
+            AgentRegistrationClient.fromIngestUrl(ingestUrl).register(workerId, appName)
+            println("[Log Friends] Agent registration sent. workerId=$workerId, appName=$appName")
+        } catch (e: Exception) {
+            System.err.println("[Log Friends] Agent auto-registration failed: ${e.message}")
         }
     }
 }

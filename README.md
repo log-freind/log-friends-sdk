@@ -26,6 +26,10 @@ export LOGFRIENDS_WORKER_ID=order-service-local-1
 export LOGFRIENDS_INGEST_URL=http://localhost:8082/ingest
 ```
 
+At startup the SDK sends Agent registration to the Console using `workerId` and `appName`.
+`appName` resolves from `LOGFRIENDS_APP_NAME`, `logfriends.app.name`, or `spring.application.name`.
+If `appName` is missing or registration fails, the target app keeps running and the SDK logs a warning.
+
 Required JVM option for runtime attach:
 
 ```bash
