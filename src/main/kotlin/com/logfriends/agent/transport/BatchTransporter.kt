@@ -1,5 +1,7 @@
-package com.logfriends.agent
+package com.logfriends.agent.transport
 
+import com.logfriends.agent.bootstrap.LogFriendsRuntime
+import com.logfriends.agent.event.AgentEventFactory
 import com.logfriends.agent.proto.AgentEvent
 import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicBoolean

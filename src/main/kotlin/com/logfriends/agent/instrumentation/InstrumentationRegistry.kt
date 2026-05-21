@@ -1,4 +1,4 @@
-package com.logfriends.agent
+package com.logfriends.agent.instrumentation
 
 import com.logfriends.agent.annotation.LogEvent
 import net.bytebuddy.agent.builder.AgentBuilder

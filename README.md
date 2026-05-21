@@ -34,6 +34,17 @@ LogFriendsInstaller
   -> POST http://localhost:8082/ingest
 ```
 
+## Package Layout
+
+```text
+com.logfriends.agent.annotation      public annotations
+com.logfriends.agent.spec            LogSpec DSL and registry
+com.logfriends.agent.bootstrap       Spring Boot startup and runtime config
+com.logfriends.agent.instrumentation ByteBuddy registry and interceptors
+com.logfriends.agent.event           AgentEvent creation and masking
+com.logfriends.agent.transport       queue, JSON writer, and HTTP ingest client
+```
+
 ## Quick Start
 
 ### 1. Add Dependency

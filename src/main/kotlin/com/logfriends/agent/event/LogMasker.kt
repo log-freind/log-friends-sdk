@@ -1,4 +1,4 @@
-package com.logfriends.agent
+package com.logfriends.agent.event
 
 import com.logfriends.agent.annotation.LogMasked
 import java.lang.reflect.Modifier

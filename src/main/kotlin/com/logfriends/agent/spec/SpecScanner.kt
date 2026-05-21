@@ -1,6 +1,6 @@
 package com.logfriends.agent.spec
 
-import com.logfriends.agent.LogFriendsRuntime
+import com.logfriends.agent.bootstrap.LogFriendsRuntime
 
 object SpecScanner {
 
