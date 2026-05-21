@@ -37,6 +37,8 @@ class LogFriendsInstaller : EnvironmentPostProcessor {
             return
         }
 
+        LogFriendsRuntime.configureAppName(environment)
+
         try {
             val inst = ByteBuddyAgent.install()
             InstrumentationRegistry.installAll(inst)

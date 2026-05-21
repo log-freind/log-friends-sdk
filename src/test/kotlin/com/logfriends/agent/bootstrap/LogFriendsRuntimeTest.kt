@@ -38,4 +38,28 @@ class LogFriendsRuntimeTest {
 
         assertNull(value)
     }
+
+    @Test
+    fun `app name falls back to spring application name`() {
+        val appName = LogFriendsRuntime.resolveAppName(
+            envAppName = null,
+            environmentAppName = null,
+            propertyAppName = null,
+            springApplicationName = "order-service"
+        )
+
+        assertEquals("order-service", appName)
+    }
+
+    @Test
+    fun `logfriends app name overrides spring application name`() {
+        val appName = LogFriendsRuntime.resolveAppName(
+            envAppName = null,
+            environmentAppName = null,
+            propertyAppName = "catalog-service",
+            springApplicationName = "order-service"
+        )
+
+        assertEquals("catalog-service", appName)
+    }
 }
