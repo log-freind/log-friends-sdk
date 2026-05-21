@@ -1,4 +1,4 @@
-package com.logfriends.agent
+package com.logfriends.agent.transport
 
 import java.net.URI
 import java.net.http.HttpClient

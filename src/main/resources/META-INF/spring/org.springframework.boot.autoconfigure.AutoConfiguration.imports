@@ -1,1 +1,1 @@
-com.logfriends.agent.LogFriendsAutoConfiguration
+com.logfriends.agent.bootstrap.LogFriendsAutoConfiguration

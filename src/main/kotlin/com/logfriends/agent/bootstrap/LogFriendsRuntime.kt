@@ -1,4 +1,4 @@
-package com.logfriends.agent
+package com.logfriends.agent.bootstrap
 
 import org.springframework.core.env.ConfigurableEnvironment
 

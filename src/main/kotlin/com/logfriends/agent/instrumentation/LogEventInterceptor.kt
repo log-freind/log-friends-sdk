@@ -1,7 +1,8 @@
-package com.logfriends.agent
+package com.logfriends.agent.instrumentation
 
 import com.logfriends.agent.annotation.LogEvent
 import com.logfriends.agent.annotation.LogMasked
+import com.logfriends.agent.transport.BatchTransporter
 import net.bytebuddy.implementation.bind.annotation.AllArguments
 import net.bytebuddy.implementation.bind.annotation.Origin
 import net.bytebuddy.implementation.bind.annotation.RuntimeType

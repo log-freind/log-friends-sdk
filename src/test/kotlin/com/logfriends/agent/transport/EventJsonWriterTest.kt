@@ -1,5 +1,6 @@
-package com.logfriends.agent
+package com.logfriends.agent.transport
 
+import com.logfriends.agent.event.AgentEventFactory
 import com.logfriends.agent.proto.AgentEvent
 import com.logfriends.agent.proto.HttpEvent
 import com.logfriends.agent.proto.JdbcEvent

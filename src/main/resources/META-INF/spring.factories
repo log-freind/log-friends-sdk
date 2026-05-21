@@ -1,1 +1,1 @@
-org.springframework.boot.env.EnvironmentPostProcessor=com.logfriends.agent.LogFriendsInstaller
+org.springframework.boot.env.EnvironmentPostProcessor=com.logfriends.agent.bootstrap.LogFriendsInstaller

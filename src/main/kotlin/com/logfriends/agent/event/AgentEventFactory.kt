@@ -1,4 +1,4 @@
-package com.logfriends.agent
+package com.logfriends.agent.event
 
 import com.logfriends.agent.proto.AgentEvent
 import com.logfriends.agent.proto.HttpEvent

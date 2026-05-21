@@ -1,5 +1,6 @@
-package com.logfriends.agent
+package com.logfriends.agent.bootstrap
 
+import com.logfriends.agent.instrumentation.InstrumentationRegistry
 import net.bytebuddy.agent.ByteBuddyAgent
 import org.springframework.boot.SpringApplication
 import org.springframework.boot.env.EnvironmentPostProcessor

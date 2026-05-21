@@ -1,4 +1,4 @@
-package com.logfriends.agent
+package com.logfriends.agent.bootstrap
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull

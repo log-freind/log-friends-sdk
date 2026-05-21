@@ -1,4 +1,4 @@
-package com.logfriends.agent
+package com.logfriends.agent.instrumentation
 
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals

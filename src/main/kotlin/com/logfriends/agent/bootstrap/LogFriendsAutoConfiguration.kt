@@ -1,6 +1,7 @@
-package com.logfriends.agent
+package com.logfriends.agent.bootstrap
 
 import com.logfriends.agent.spec.SpecScanner
+import com.logfriends.agent.transport.BatchTransporter
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.context.ApplicationListener

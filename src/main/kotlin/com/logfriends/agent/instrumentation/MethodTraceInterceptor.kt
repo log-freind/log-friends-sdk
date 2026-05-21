@@ -1,5 +1,6 @@
-package com.logfriends.agent
+package com.logfriends.agent.instrumentation
 
+import com.logfriends.agent.transport.BatchTransporter
 import net.bytebuddy.implementation.bind.annotation.Origin
 import net.bytebuddy.implementation.bind.annotation.RuntimeType
 import net.bytebuddy.implementation.bind.annotation.SuperCall
