@@ -9,7 +9,7 @@ Spring Boot App
   -> log-friends-console
 ```
 
-The first-phase SDK captures `HTTP`, `LOG`, `JDBC`, `METHOD_TRACE`, and `LOG_EVENT`. Kafka, broker topics, and Protobuf transport are not part of the current ingest path.
+The first-phase SDK captures `HTTP`, `LOG`, `JDBC`, `METHOD_TRACE`, and `LOG_EVENT` and sends HTTP JSON batches to the Console ingest endpoint.
 
 ## Quick Start
 
