@@ -15,7 +15,7 @@ The first-phase SDK captures `HTTP`, `LOG`, `JDBC`, `METHOD_TRACE`, and `LOG_EVE
 
 ```kotlin
 dependencies {
-    implementation("com.logfriends:log-friends-sdk:1.3.0")
+    implementation("com.logfriends:log-friends-sdk:0.1.0")
 }
 ```
 
