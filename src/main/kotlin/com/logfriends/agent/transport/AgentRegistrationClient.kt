@@ -14,7 +14,7 @@ class AgentRegistrationClient(
         .build()
 ) {
 
-    fun register(workerId: String, appName: String) {
+    fun register(workerId: String, appName: String): AgentRegistrationHandshake {
         val request = HttpRequest.newBuilder()
             .uri(URI.create(registrationUrl))
             .header("Content-Type", "application/json")
@@ -22,17 +22,17 @@ class AgentRegistrationClient(
             .timeout(Duration.ofSeconds(10))
             .build()
 
-        val response = httpClient.send(request, HttpResponse.BodyHandlers.discarding())
+        val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
         if (response.statusCode() == 409) {
-            heartbeat(workerId)
-            return
+            return heartbeat(workerId, appName)
         }
         if (response.statusCode() !in 200..299) {
             throw RuntimeException("HTTP ${response.statusCode()}")
         }
+        return AgentRegistrationResponseParser.parse(response.body().orEmpty(), workerId, appName)
     }
 
-    private fun heartbeat(workerId: String) {
+    private fun heartbeat(workerId: String, appName: String): AgentRegistrationHandshake {
         val request = HttpRequest.newBuilder()
             .uri(URI.create(registrationUrl).resolve("/api/agents/heartbeat"))
             .header("Content-Type", "application/json")
@@ -40,10 +40,11 @@ class AgentRegistrationClient(
             .timeout(Duration.ofSeconds(10))
             .build()
 
-        val response = httpClient.send(request, HttpResponse.BodyHandlers.discarding())
+        val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
         if (response.statusCode() !in 200..299) {
             throw RuntimeException("heartbeat HTTP ${response.statusCode()}")
         }
+        return AgentRegistrationResponseParser.parse(response.body().orEmpty(), workerId, appName)
     }
 
     private fun writeRequest(workerId: String, appName: String): String {

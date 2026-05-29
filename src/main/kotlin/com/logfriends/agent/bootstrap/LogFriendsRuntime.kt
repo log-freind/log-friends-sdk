@@ -1,5 +1,6 @@
 package com.logfriends.agent.bootstrap
 
+import com.logfriends.agent.transport.AgentRegistrationHandshake
 import org.springframework.core.env.ConfigurableEnvironment
 
 object LogFriendsRuntime {
@@ -15,6 +16,9 @@ object LogFriendsRuntime {
     @Volatile
     private var configuredAppName: String? = null
 
+    @Volatile
+    private var currentHandshake: AgentRegistrationHandshake? = null
+
     val workerId: String?
         get() = configuredWorkerId
 
@@ -23,6 +27,9 @@ object LogFriendsRuntime {
 
     val appName: String?
         get() = configuredAppName
+
+    internal val handshake: AgentRegistrationHandshake?
+        get() = currentHandshake
 
     fun isDisabled(): Boolean = disabledReason != null
 
@@ -54,6 +61,10 @@ object LogFriendsRuntime {
 
     fun configureAppName(environment: ConfigurableEnvironment) {
         configuredAppName = resolveAppName(environment)
+    }
+
+    fun markRegistered(handshake: AgentRegistrationHandshake) {
+        currentHandshake = handshake
     }
 
     private fun resolveWorkerId(environment: ConfigurableEnvironment): String? {

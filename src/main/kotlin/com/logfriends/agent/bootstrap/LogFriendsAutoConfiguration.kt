@@ -63,8 +63,15 @@ class LogFriendsAutoConfiguration {
         }
 
         try {
-            AgentRegistrationClient.fromIngestUrl(ingestUrl).register(workerId, appName)
-            println("[Log Friends] Agent registration sent. workerId=$workerId, appName=$appName")
+            val handshake = AgentRegistrationClient.fromIngestUrl(ingestUrl).register(workerId, appName)
+            LogFriendsRuntime.markRegistered(handshake)
+            println(
+                "[Log Friends] Agent registered. " +
+                    "agentId=${handshake.agentId ?: "unknown"}, " +
+                    "workerId=${handshake.workerId}, " +
+                    "appName=${handshake.appName ?: appName}, " +
+                    "knownLogSpecs=${handshake.knownLogSpecCount}"
+            )
         } catch (e: Exception) {
             System.err.println("[Log Friends] Agent auto-registration failed: ${e.message}")
         }

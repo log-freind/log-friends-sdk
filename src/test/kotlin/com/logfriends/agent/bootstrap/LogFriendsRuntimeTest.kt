@@ -1,5 +1,7 @@
 package com.logfriends.agent.bootstrap
 
+import com.logfriends.agent.transport.AgentRegistrationHandshake
+import com.logfriends.agent.transport.KnownLogSpec
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
@@ -61,5 +63,22 @@ class LogFriendsRuntimeTest {
         )
 
         assertEquals("catalog-service", appName)
+    }
+
+    @Test
+    fun `stores registration handshake state internally`() {
+        LogFriendsRuntime.markRegistered(
+            AgentRegistrationHandshake(
+                agentId = 1L,
+                workerId = "worker-1",
+                appName = "order-service",
+                knownLogSpecs = listOf(KnownLogSpec("orderCreated", "2026-05-27T00:00:00Z"))
+            )
+        )
+
+        assertEquals(1L, LogFriendsRuntime.handshake?.agentId)
+        assertEquals("worker-1", LogFriendsRuntime.handshake?.workerId)
+        assertEquals("order-service", LogFriendsRuntime.handshake?.appName)
+        assertEquals(1, LogFriendsRuntime.handshake?.knownLogSpecCount)
     }
 }
