@@ -1,12 +1,11 @@
 package com.logfriends.agent.transport
 
 import com.logfriends.agent.event.AgentEventFactory
-import com.logfriends.agent.proto.AgentEvent
-import com.logfriends.agent.proto.HttpEvent
-import com.logfriends.agent.proto.JdbcEvent
-import com.logfriends.agent.proto.LogEventCapture
-import com.logfriends.agent.proto.LogEvent
-import com.logfriends.agent.proto.MethodTraceEvent
+import com.logfriends.agent.event.HttpCapturedEvent
+import com.logfriends.agent.event.JdbcCapturedEvent
+import com.logfriends.agent.event.LogCapturedEvent
+import com.logfriends.agent.event.LogEventCapturedEvent
+import com.logfriends.agent.event.MethodTraceCapturedEvent
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -15,15 +14,11 @@ class EventJsonWriterTest {
 
     @Test
     fun `writes batch with worker id and events`() {
-        val event = AgentEvent.newBuilder()
-            .setLogEvent(
-                LogEventCapture.newBuilder()
-                    .setTimestamp("2026-05-20T00:00:00Z")
-                    .setEventName("orderCreated")
-                    .putFields("orderId", "1")
-                    .build()
-            )
-            .build()
+        val event = LogEventCapturedEvent(
+            timestamp = "2026-05-20T00:00:00Z",
+            eventName = "orderCreated",
+            fields = mapOf("orderId" to "1")
+        )
 
         val json = EventJsonWriter.writeBatch("worker-1", listOf(event))
 
@@ -34,17 +29,15 @@ class EventJsonWriterTest {
 
     @Test
     fun `log event fields are written as payload json literals`() {
-        val event = AgentEvent.newBuilder()
-            .setLogEvent(
-                LogEventCapture.newBuilder()
-                    .setTimestamp("2026-05-20T00:00:00Z")
-                    .setEventName("orderCreated")
-                    .putFields("orderId", "1")
-                    .putFields("email", "\"__MASKED__\"")
-                    .putFields("request", "{\"productId\":10}")
-                    .build()
+        val event = LogEventCapturedEvent(
+            timestamp = "2026-05-20T00:00:00Z",
+            eventName = "orderCreated",
+            fields = mapOf(
+                "orderId" to "1",
+                "email" to "\"__MASKED__\"",
+                "request" to "{\"productId\":10}"
             )
-            .build()
+        )
 
         val json = EventJsonWriter.writeBatch("worker-1", listOf(event))
 
@@ -91,56 +84,37 @@ class EventJsonWriterTest {
     @Test
     fun `writes all first phase event type names`() {
         val events = listOf(
-            AgentEvent.newBuilder()
-                .setHttp(
-                    HttpEvent.newBuilder()
-                        .setTimestamp("2026-05-20T00:00:00Z")
-                        .setMethod("GET")
-                        .setUri("/health")
-                        .setStatusCode(200)
-                        .setDurationMs(12)
-                        .build()
-                )
-                .build(),
-            AgentEvent.newBuilder()
-                .setLog(
-                    LogEvent.newBuilder()
-                        .setTimestamp("2026-05-20T00:00:01Z")
-                        .setLevel("INFO")
-                        .setLoggerName("app")
-                        .setThreadName("main")
-                        .setMessage("started")
-                        .build()
-                )
-                .build(),
-            AgentEvent.newBuilder()
-                .setJdbc(
-                    JdbcEvent.newBuilder()
-                        .setTimestamp("2026-05-20T00:00:02Z")
-                        .setSql("select 1")
-                        .setDurationMs(3)
-                        .setRowCount(1)
-                        .build()
-                )
-                .build(),
-            AgentEvent.newBuilder()
-                .setMethodTrace(
-                    MethodTraceEvent.newBuilder()
-                        .setTimestamp("2026-05-20T00:00:03Z")
-                        .setClassName("OrderService")
-                        .setMethodName("create")
-                        .setDurationMs(20)
-                        .build()
-                )
-                .build(),
-            AgentEvent.newBuilder()
-                .setLogEvent(
-                    LogEventCapture.newBuilder()
-                        .setTimestamp("2026-05-20T00:00:04Z")
-                        .setEventName("orderCreated")
-                        .build()
-                )
-                .build()
+            HttpCapturedEvent(
+                timestamp = "2026-05-20T00:00:00Z",
+                method = "GET",
+                uri = "/health",
+                statusCode = 200,
+                durationMs = 12
+            ),
+            LogCapturedEvent(
+                timestamp = "2026-05-20T00:00:01Z",
+                level = "INFO",
+                loggerName = "app",
+                threadName = "main",
+                message = "started"
+            ),
+            JdbcCapturedEvent(
+                timestamp = "2026-05-20T00:00:02Z",
+                sql = "select 1",
+                durationMs = 3,
+                rowCount = 1
+            ),
+            MethodTraceCapturedEvent(
+                timestamp = "2026-05-20T00:00:03Z",
+                className = "OrderService",
+                methodName = "create",
+                durationMs = 20
+            ),
+            LogEventCapturedEvent(
+                timestamp = "2026-05-20T00:00:04Z",
+                eventName = "orderCreated",
+                fields = emptyMap()
+            )
         )
 
         val json = EventJsonWriter.writeBatch("worker-1", events)

@@ -2,6 +2,7 @@ package com.logfriends.agent.bootstrap
 
 import com.logfriends.agent.transport.AgentRegistrationHandshake
 import org.springframework.core.env.ConfigurableEnvironment
+import java.lang.instrument.Instrumentation
 
 object LogFriendsRuntime {
     @Volatile
@@ -17,7 +18,13 @@ object LogFriendsRuntime {
     private var configuredAppName: String? = null
 
     @Volatile
+    private var configuredAppVersion: String? = null
+
+    @Volatile
     private var currentHandshake: AgentRegistrationHandshake? = null
+
+    @Volatile
+    private var currentInstrumentation: Instrumentation? = null
 
     val workerId: String?
         get() = configuredWorkerId
@@ -28,8 +35,14 @@ object LogFriendsRuntime {
     val appName: String?
         get() = configuredAppName
 
+    val appVersion: String?
+        get() = configuredAppVersion
+
     internal val handshake: AgentRegistrationHandshake?
         get() = currentHandshake
+
+    internal val instrumentation: Instrumentation?
+        get() = currentInstrumentation
 
     fun isDisabled(): Boolean = disabledReason != null
 
@@ -63,8 +76,20 @@ object LogFriendsRuntime {
         configuredAppName = resolveAppName(environment)
     }
 
+    fun configureAppVersion(environment: ConfigurableEnvironment) {
+        configuredAppVersion = resolveConfiguredValue(
+            System.getenv("LOGFRIENDS_APP_VERSION"),
+            environment.getProperty("LOGFRIENDS_APP_VERSION"),
+            environment.getProperty("logfriends.app.version")
+        )
+    }
+
     fun markRegistered(handshake: AgentRegistrationHandshake) {
         currentHandshake = handshake
+    }
+
+    fun markInstrumentationInstalled(instrumentation: Instrumentation) {
+        currentInstrumentation = instrumentation
     }
 
     private fun resolveWorkerId(environment: ConfigurableEnvironment): String? {
