@@ -1,8 +1,10 @@
 package com.logfriends.agent.bootstrap
 
+import com.logfriends.agent.discovery.DiscoveredLogEventScanner
 import com.logfriends.agent.spec.SpecScanner
 import com.logfriends.agent.transport.AgentRegistrationClient
 import com.logfriends.agent.transport.BatchTransporter
+import com.logfriends.agent.transport.DiscoveredLogEventReportClient
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.context.ApplicationListener
@@ -72,8 +74,37 @@ class LogFriendsAutoConfiguration {
                     "appName=${handshake.appName ?: appName}, " +
                     "knownLogSpecs=${handshake.knownLogSpecCount}"
             )
+            scanAndReportDiscoveredLogEvents()
         } catch (e: Exception) {
             System.err.println("[Log Friends] Agent auto-registration failed: ${e.message}")
+        }
+    }
+
+    private fun scanAndReportDiscoveredLogEvents() {
+        val instrumentation = LogFriendsRuntime.instrumentation ?: run {
+            System.err.println("[Log Friends] Discovered LOG_EVENT scan skipped: instrumentation is missing")
+            return
+        }
+        val handshake = LogFriendsRuntime.handshake ?: run {
+            System.err.println("[Log Friends] Discovered LOG_EVENT report skipped: agent handshake is missing")
+            return
+        }
+        val ingestUrl = LogFriendsRuntime.ingestUrl ?: return
+
+        val candidates = DiscoveredLogEventScanner.scan(instrumentation)
+        println("[Log Friends] Discovered LOG_EVENT candidates=${candidates.size}")
+        if (candidates.isEmpty()) return
+
+        try {
+            val result = DiscoveredLogEventReportClient.fromIngestUrl(ingestUrl)
+                .report(
+                    handshake = handshake,
+                    appVersion = LogFriendsRuntime.appVersion,
+                    events = candidates
+                )
+            println("[Log Friends] Discovered LOG_EVENT report completed. received=${result.received}")
+        } catch (e: Exception) {
+            System.err.println("[Log Friends] Discovered LOG_EVENT report failed: ${e.message}")
         }
     }
 }

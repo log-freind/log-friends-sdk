@@ -38,9 +38,11 @@ class LogFriendsInstaller : EnvironmentPostProcessor {
         }
 
         LogFriendsRuntime.configureAppName(environment)
+        LogFriendsRuntime.configureAppVersion(environment)
 
         try {
             val inst = ByteBuddyAgent.install()
+            LogFriendsRuntime.markInstrumentationInstalled(inst)
             InstrumentationRegistry.installAll(inst)
             println("[Log Friends] Dynamic agent installed successfully")
         } catch (e: Exception) {

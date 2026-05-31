@@ -1,11 +1,5 @@
 package com.logfriends.agent.event
 
-import com.logfriends.agent.proto.AgentEvent
-import com.logfriends.agent.proto.HttpEvent
-import com.logfriends.agent.proto.JdbcEvent
-import com.logfriends.agent.proto.LogEvent
-import com.logfriends.agent.proto.LogEventCapture
-import com.logfriends.agent.proto.MethodTraceEvent
 import java.time.Instant
 
 object AgentEventFactory {
@@ -17,17 +11,14 @@ object AgentEventFactory {
         message: String,
         exception: String?
     ): AgentEvent {
-        val proto = LogEvent.newBuilder()
-            .setTimestamp(now())
-            .setLevel(level)
-            .setLoggerName(loggerName)
-            .setThreadName(threadName)
-            .setMessage(message)
-            .apply {
-                if (!exception.isNullOrEmpty()) setException(exception)
-            }
-            .build()
-        return AgentEvent.newBuilder().setLog(proto).build()
+        return LogCapturedEvent(
+            timestamp = now(),
+            level = level,
+            loggerName = loggerName,
+            threadName = threadName,
+            message = message,
+            exception = exception?.takeIf { it.isNotBlank() }
+        )
     }
 
     fun http(
@@ -36,14 +27,13 @@ object AgentEventFactory {
         statusCode: Int,
         durationMs: Long
     ): AgentEvent {
-        val proto = HttpEvent.newBuilder()
-            .setTimestamp(now())
-            .setMethod(method)
-            .setUri(uri)
-            .setStatusCode(statusCode)
-            .setDurationMs(durationMs)
-            .build()
-        return AgentEvent.newBuilder().setHttp(proto).build()
+        return HttpCapturedEvent(
+            timestamp = now(),
+            method = method,
+            uri = uri,
+            statusCode = statusCode,
+            durationMs = durationMs
+        )
     }
 
     fun jdbc(
@@ -52,16 +42,13 @@ object AgentEventFactory {
         rowCount: Int,
         exception: String?
     ): AgentEvent {
-        val proto = JdbcEvent.newBuilder()
-            .setTimestamp(now())
-            .setSql(sql)
-            .setDurationMs(durationMs)
-            .setRowCount(rowCount)
-            .apply {
-                if (!exception.isNullOrEmpty()) setException(exception)
-            }
-            .build()
-        return AgentEvent.newBuilder().setJdbc(proto).build()
+        return JdbcCapturedEvent(
+            timestamp = now(),
+            sql = sql,
+            durationMs = durationMs,
+            rowCount = rowCount,
+            exception = exception?.takeIf { it.isNotBlank() }
+        )
     }
 
     fun methodTrace(
@@ -70,16 +57,13 @@ object AgentEventFactory {
         durationMs: Long,
         exception: String?
     ): AgentEvent {
-        val proto = MethodTraceEvent.newBuilder()
-            .setTimestamp(now())
-            .setClassName(className)
-            .setMethodName(methodName)
-            .setDurationMs(durationMs)
-            .apply {
-                if (!exception.isNullOrEmpty()) setException(exception)
-            }
-            .build()
-        return AgentEvent.newBuilder().setMethodTrace(proto).build()
+        return MethodTraceCapturedEvent(
+            timestamp = now(),
+            className = className,
+            methodName = methodName,
+            durationMs = durationMs,
+            exception = exception?.takeIf { it.isNotBlank() }
+        )
     }
 
     fun logEvent(
@@ -97,12 +81,11 @@ object AgentEventFactory {
             )
         }
 
-        val proto = LogEventCapture.newBuilder()
-            .setTimestamp(now())
-            .setEventName(eventName)
-            .putAllFields(fields)
-            .build()
-        return AgentEvent.newBuilder().setLogEvent(proto).build()
+        return LogEventCapturedEvent(
+            timestamp = now(),
+            eventName = eventName,
+            fields = fields
+        )
     }
 
     private fun now(): String = Instant.now().toString()
