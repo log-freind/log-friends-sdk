@@ -1,6 +1,8 @@
 package com.logfriends.agent.transport
 
 import com.logfriends.agent.discovery.DiscoveredLogEventCandidate
+import com.logfriends.agent.discovery.LogFieldHint
+import com.logfriends.agent.discovery.LogSpecHint
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -65,9 +67,55 @@ class DiscoveredLogEventReportClient(
                     if (paramIndex > 0) append(',')
                     append('"').append(escape(parameterName)).append('"')
                 }
-                append("]}")
+                append("]")
+                event.specHint?.let {
+                    append(",\"specHint\":").append(writeSpecHint(it))
+                }
+                append("}")
             }
             append("]}")
+        }
+    }
+
+    private fun writeSpecHint(hint: LogSpecHint): String {
+        return buildString {
+            append("{")
+            var needsComma = false
+            fun field(name: String, value: String?) {
+                if (value.isNullOrBlank()) return
+                if (needsComma) append(',')
+                append('"').append(name).append("\":\"").append(escape(value)).append('"')
+                needsComma = true
+            }
+            field("description", hint.description)
+            field("apiMethod", hint.apiMethod)
+            field("apiPath", hint.apiPath)
+            field("apiDescription", hint.apiDescription)
+            if (needsComma) append(',')
+            append("\"fields\":").append(writeFieldHints(hint.fields))
+            append("}")
+        }
+    }
+
+    private fun writeFieldHints(fields: List<LogFieldHint>): String {
+        return buildString {
+            append("[")
+            fields.forEachIndexed { index, field ->
+                if (index > 0) append(',')
+                append("{\"name\":\"").append(escape(field.name)).append('"')
+                field.description?.takeIf { it.isNotBlank() }?.let {
+                    append(",\"description\":\"").append(escape(it)).append('"')
+                }
+                field.type?.takeIf { it.isNotBlank() }?.let {
+                    append(",\"type\":\"").append(escape(it)).append('"')
+                }
+                append(",\"required\":").append(field.required)
+                if (field.nestedFields.isNotEmpty()) {
+                    append(",\"nestedFields\":").append(writeFieldHints(field.nestedFields))
+                }
+                append("}")
+            }
+            append("]")
         }
     }
 

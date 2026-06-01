@@ -26,7 +26,7 @@ object LogEventInterceptor {
         try {
             val logEvent = method.getAnnotation(LogEvent::class.java)
             if (logEvent != null) {
-                val eventName = logEvent.value.trim()
+                val eventName = logEvent.name.ifBlank { logEvent.value }.trim()
                 if (!isValidEventName(eventName)) {
                     System.err.println(
                         "[Log Friends] LOG_EVENT skipped: eventName must be camelCase and match ^[a-z][a-zA-Z0-9]*$ " +
