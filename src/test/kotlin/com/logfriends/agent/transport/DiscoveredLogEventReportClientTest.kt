@@ -1,6 +1,8 @@
 package com.logfriends.agent.transport
 
 import com.logfriends.agent.discovery.DiscoveredLogEventCandidate
+import com.logfriends.agent.discovery.LogFieldHint
+import com.logfriends.agent.discovery.LogSpecHint
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import org.junit.jupiter.api.AfterEach
@@ -46,7 +48,28 @@ class DiscoveredLogEventReportClientTest {
                         eventName = "orderCreated",
                         sourceClass = "com.example.OrderService",
                         sourceMethod = "createOrder",
-                        parameterNames = listOf("request")
+                        parameterNames = listOf("request"),
+                        specHint = LogSpecHint(
+                            description = "Order creation business eventName",
+                            apiMethod = "POST",
+                            apiPath = "/orders",
+                            apiDescription = "Creates an order from an OrderRequest DTO",
+                            fields = listOf(
+                                LogFieldHint(
+                                    name = "request",
+                                    description = "OrderRequest DTO object",
+                                    type = "JSON",
+                                    nestedFields = listOf(
+                                        LogFieldHint(
+                                            name = "customerEmail",
+                                            description = "Buyer email. Masked by SDK before transport",
+                                            type = "STRING",
+                                            required = false
+                                        )
+                                    )
+                                )
+                            )
+                        )
                     )
                 )
             )
@@ -62,6 +85,13 @@ class DiscoveredLogEventReportClientTest {
         assertTrue(body.contains("\"sourceClass\":\"com.example.OrderService\""))
         assertTrue(body.contains("\"sourceMethod\":\"createOrder\""))
         assertTrue(body.contains("\"parameterNames\":[\"request\"]"))
+        assertTrue(body.contains("\"specHint\":{"))
+        assertTrue(body.contains("\"description\":\"Order creation business eventName\""))
+        assertTrue(body.contains("\"apiMethod\":\"POST\""))
+        assertTrue(body.contains("\"apiPath\":\"/orders\""))
+        assertTrue(body.contains("\"fields\":[{\"name\":\"request\""))
+        assertTrue(body.contains("\"nestedFields\":[{\"name\":\"customerEmail\""))
+        assertTrue(body.contains("\"required\":false"))
     }
 
     private fun startServer(handler: (HttpExchange) -> Unit): String {
