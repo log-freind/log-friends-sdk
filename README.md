@@ -15,7 +15,16 @@ The first-phase SDK captures `HTTP`, `LOG`, `JDBC`, `METHOD_TRACE`, and `LOG_EVE
 
 ```kotlin
 dependencies {
-    implementation("com.logfriends:log-friends-sdk:0.1.0")
+    implementation("com.github.log-freind:log-friends-sdk:v0.3.0")
+}
+```
+
+Use JitPack for GitHub tag-based consumption:
+
+```kotlin
+repositories {
+    mavenCentral()
+    maven { url = uri("https://jitpack.io") }
 }
 ```
 
@@ -39,9 +48,22 @@ Required JVM option for runtime attach:
 Business `LOG_EVENT` names must use camelCase:
 
 ```kotlin
-@LogEvent("userRegistered")
-fun registerUser(userId: String, @LogMasked email: String)
+@LogEvent(
+    name = "userRegistered",
+    description = "User registration business eventName",
+    apiMethod = "POST",
+    apiPath = "/users"
+)
+fun registerUser(
+    @LogField(description = "Registered user identifier", type = "STRING")
+    userId: String,
+    @LogMasked
+    @LogField(description = "User email. Masked before transport", type = "STRING")
+    email: String
+)
 ```
+
+`@LogEvent` and `@LogField` descriptions are reported as Discovered LogEvent hints. They are not automatically promoted to LogSpec contracts.
 
 ## Documentation
 
