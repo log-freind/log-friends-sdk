@@ -1,15 +1,17 @@
 # log-friends-sdk
 
-Kotlin SDK that instruments Spring Boot applications with ByteBuddy and sends HTTP JSON event batches to `log-friends-console`.
+Kotlin/JVM SDK for Spring Boot applications. It installs ByteBuddy instrumentation in the target JVM, captures runtime events, registers the running Agent with `log-friends-console`, and sends HTTP JSON event batches to the Console ingest endpoint.
 
 ```text
-Spring Boot App
-  -> log-friends-sdk
-  -> HTTP POST /ingest
+Spring Boot App + log-friends-sdk
+  -> ByteBuddy instrumentation
+  -> startup Agent registration POST /api/agents
+  -> Discovered LogEvent report after handshake
+  -> HTTP JSON batch POST /ingest
   -> log-friends-console
 ```
 
-The first-phase SDK captures `HTTP`, `LOG`, `JDBC`, `METHOD_TRACE`, and `LOG_EVENT` and sends HTTP JSON batches to the Console ingest endpoint.
+The SDK captures five event types with ByteBuddy: `HTTP`, `LOG`, `JDBC`, `METHOD_TRACE`, and `LOG_EVENT`. The current SDK path is HTTP-only; it does not assume Kafka, Spark, ClickHouse, or another broker/analytics pipeline.
 
 ## Quick Start
 
@@ -31,13 +33,20 @@ repositories {
 Required runtime configuration:
 
 ```bash
+export LOGFRIENDS_INGEST_URL=http://localhost:8080/ingest
 export LOGFRIENDS_WORKER_ID=order-service-local-1
-export LOGFRIENDS_INGEST_URL=http://localhost:8082/ingest
+export LOGFRIENDS_APP_NAME=order-service
+
+# Optional: included in Discovered LogEvent reports when set.
+export LOGFRIENDS_APP_VERSION=local
 ```
 
-At startup the SDK sends Agent registration to the Console using `workerId` and `appName`.
-`appName` resolves from `LOGFRIENDS_APP_NAME`, `logfriends.app.name`, or `spring.application.name`.
-If `appName` is missing or registration fails, the target app keeps running and the SDK logs a warning.
+Equivalent Spring/system properties:
+
+- `LOGFRIENDS_INGEST_URL` or `logfriends.ingest.url`
+- `LOGFRIENDS_WORKER_ID` or `logfriends.worker.id`
+- `LOGFRIENDS_APP_NAME`, `logfriends.app.name`, or `spring.application.name`
+- Optional `LOGFRIENDS_APP_VERSION` or `logfriends.app.version`
 
 Required JVM option for runtime attach:
 
@@ -45,25 +54,48 @@ Required JVM option for runtime attach:
 -Djdk.attach.allowAttachSelf=true
 ```
 
-Business `LOG_EVENT` names must use camelCase:
+## Runtime Behavior
+
+At Spring Boot startup, the SDK installs ByteBuddy instrumentation for:
+
+- `HTTP`: Spring MVC request handling
+- `LOG`: Logback append events
+- `JDBC`: `PreparedStatement` executions
+- `METHOD_TRACE`: public `@Service` methods
+- `LOG_EVENT`: methods annotated with `@LogEvent`
+
+On `ApplicationReadyEvent`, the SDK sends startup Agent registration to Console `POST /api/agents` using `workerId` and `appName`. If registration succeeds, the SDK scans loaded classes for `@LogEvent` methods and reports Discovered LogEvent candidates to `POST /api/agents/{agentId}/discovered-log-events`.
+
+Runtime events are queued and flushed as HTTP JSON batches to the configured `LOGFRIENDS_INGEST_URL`, normally Console `POST /ingest`. `/ingest` stores captured Raw Events only; it does not auto-register Agents.
+
+Discovered LogEvent candidates are code hints, not contracts. The SDK does not auto-register or promote `LogSpec`; create and edit `LogSpec` through Console APIs.
+
+## LogEvent Example
+
+Business `LOG_EVENT` names must use camelCase. `@LogField` metadata is included in Discovered LogEvent hints:
 
 ```kotlin
+import com.logfriends.agent.annotation.LogEvent
+import com.logfriends.agent.annotation.LogField
+
 @LogEvent(
     name = "userRegistered",
-    description = "User registration business eventName",
+    description = "User registration business event",
     apiMethod = "POST",
     apiPath = "/users"
 )
 fun registerUser(
     @LogField(description = "Registered user identifier", type = "STRING")
-    userId: String,
-    @LogMasked
-    @LogField(description = "User email. Masked before transport", type = "STRING")
-    email: String
+    userId: String
 )
 ```
 
-`@LogEvent` and `@LogField` descriptions are reported as Discovered LogEvent hints. They are not automatically promoted to LogSpec contracts.
+## Build
+
+```bash
+./gradlew build
+./gradlew publishToMavenLocal
+```
 
 ## Documentation
 
