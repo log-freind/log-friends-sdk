@@ -13,6 +13,27 @@ Spring Boot App + log-friends-sdk
 
 The SDK captures five event types with ByteBuddy: `HTTP`, `LOG`, `JDBC`, `METHOD_TRACE`, and `LOG_EVENT`. The current SDK path is HTTP-only; it does not assume Kafka, Spark, ClickHouse, or another broker/analytics pipeline.
 
+## Repository Role
+
+`log-friends-sdk` is only responsible for capture, startup registration, discovered `@LogEvent` hints, queueing, and HTTP delivery.
+
+The surrounding repositories own the rest of the flow:
+
+| Repository | Responsibility |
+|---|---|
+| `log-friends-console` | ingest API, Agent records, Raw Event storage, Log Catalog API, Raw Events API, stats |
+| `log-friends-console-web` | Next.js UI for Log Catalog, Raw Events, filters, and CSV download |
+| `log-friends-examples` | shopping mall demo app that generates realistic `LOG_EVENT` data |
+
+Local full flow:
+
+```text
+log-friends-examples
+  -> log-friends-sdk
+  -> log-friends-console
+  -> log-friends-console-web
+```
+
 ## Quick Start
 
 ```kotlin
